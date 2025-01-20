@@ -1,0 +1,186 @@
+-- Space Invaders Clone for Pico-8
+
+-- Initialization
+function _init()
+    -- Player setup
+    player = {
+        x = 64,
+        y = 120,
+        width = 8,
+        height = 8,
+        speed = 2,
+        bullets = {}
+    }
+
+    -- Enemy setup
+    enemies = {}
+    enemy_rows = 5
+    enemy_columns = 11
+    enemy_width = 8
+    enemy_height = 8
+    enemy_spacing = 16
+    enemy_speed = 0.5
+    initial_enemy_offset_y = 20
+    enemy_move_down_interval = 120 -- Frames between downward movements
+    enemy_move_down_timer = 0
+    enemy_count = 0
+
+    -- Enemy bullets setup
+    enemy_bullets = {}
+    enemy_bullet_speed = 1.5
+    enemy_shoot_chance = 0.01 -- Base chance of shooting per frame per enemy
+
+    -- Game state
+    level = 1
+    bullet_speed = -4
+    game_over = false
+    score = 0
+
+    spawn_enemies()
+end
+
+-- Spawn enemies function
+function spawn_enemies()
+    enemies = {}
+    enemy_count = 0
+    for row = 0, enemy_rows - 1 do
+        for col = 0, enemy_columns - 1 do
+            add(enemies, {
+                x = col * enemy_spacing,
+                y = initial_enemy_offset_y + row * enemy_spacing,
+                width = enemy_width,
+                height = enemy_height,
+                dx = enemy_speed + (level - 1) * 0.1, -- Increase speed with level
+                dy = 0
+            })
+            enemy_count += 1
+        end
+    end
+    -- Increase enemy shooting chance slightly per level
+    enemy_shoot_chance = 0.01 + (level - 1) * 0.002
+end
+
+-- Update logic
+function _update()
+    if game_over then return end
+
+    -- Player movement
+    if btn(0) then player.x = max(0, player.x - player.speed) end
+    if btn(1) then player.x = min(128 - player.width, player.x + player.speed) end
+
+    -- Shooting bullets
+    if btnp(4) then
+        add(player.bullets, {x = player.x + player.width / 2 - 1, y = player.y, width = 2, height = 4})
+    end
+
+    -- Update bullets
+    for b in all(player.bullets) do
+        b.y += bullet_speed
+        if b.y < 0 then del(player.bullets, b) end
+    end
+
+    -- Update enemies
+    local reverse = false
+    for e in all(enemies) do
+        e.x += e.dx
+        if e.x < 0 or e.x + e.width > 128 then
+            reverse = true
+        end
+
+        -- Randomly shoot bullets
+        if rnd(1) < enemy_shoot_chance then
+            add(enemy_bullets, {x = e.x + e.width / 2 - 1, y = e.y + e.height, width = 2, height = 4})
+        end
+    end
+
+    enemy_move_down_timer += 1
+    if reverse and enemy_move_down_timer >= enemy_move_down_interval then
+        for e in all(enemies) do
+            e.dx = -e.dx
+            e.y += 8
+        end
+        enemy_move_down_timer = 0
+    end
+
+    -- Update enemy bullets
+    for eb in all(enemy_bullets) do
+        eb.y += enemy_bullet_speed
+        if eb.y > 128 then del(enemy_bullets, eb) end
+
+        -- Check collision with player
+        if collide(eb, player) then
+            game_over = true
+            return
+        end
+    end
+
+    -- Check bullet collisions
+    for b in all(player.bullets) do
+        for e in all(enemies) do
+            if collide(b, e) then
+                del(player.bullets, b)
+                del(enemies, e)
+                enemy_count -= 1
+                score += 10
+                break
+            end
+        end
+    end
+
+    -- Progress to next level if all enemies are eliminated
+    if enemy_count == 0 then
+        level += 1
+        enemy_speed += 0.1 -- Slightly increase base enemy speed
+        spawn_enemies()
+    end
+
+    -- Check game over
+    if #enemies > 0 then
+        for e in all(enemies) do
+            if e.y + e.height >= player.y then
+                game_over = true
+                break
+            end
+        end
+    end
+end
+
+-- Draw everything
+function _draw()
+    cls()
+
+    -- Draw player
+    rectfill(player.x, player.y, player.x + player.width, player.y + player.height, 7)
+
+    -- Draw bullets
+    for b in all(player.bullets) do
+        rectfill(b.x, b.y, b.x + b.width, b.y + b.height, 8)
+    end
+
+    -- Draw enemy bullets
+    for eb in all(enemy_bullets) do
+        rectfill(eb.x, eb.y, eb.x + eb.width, eb.y + eb.height, 9)
+    end
+
+    -- Draw enemies
+    for e in all(enemies) do
+        rectfill(e.x, e.y, e.x + e.width, e.y + e.height, 9)
+    end
+
+    -- Draw score and level
+    print("Score: " .. score, 2, 2, 7)
+    print("Level: " .. level, 2, 10, 7)
+
+    -- Draw game over
+    if game_over then
+        print("GAME OVER", 50, 60, 8)
+    end
+end
+
+-- Collision detection
+function collide(a, b)
+    return a.x < b.x + b.width and
+           a.x + a.width > b.x and
+           a.y < b.y + b.height and
+           a.y + a.height > b.y
+end
